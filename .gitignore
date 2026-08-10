@@ -1,0 +1,19 @@
+# Build artifacts
+*.aux
+*.log
+*.out
+*.toc
+
+# LaTeX intermediate
+*.fls
+*.fdb_latexmk
+
+# Python
+__pycache__/
+*.pyc
+
+# Leftover development/test files
+fonttest.pdf
+test3.pdf
+fix_paths.py
+update_preambles.py

@@ -1,0 +1,89 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[margin=25mm, headheight=15pt, headsep=10pt]{geometry}
+\usepackage{fontspec}
+\usepackage[table]{xcolor} % Note: table option is required for rowcolors
+\usepackage{titlesec}
+\usepackage{tocloft}
+\usepackage{fancyhdr}
+\usepackage{booktabs}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins, breakable}
+\usepackage[colorlinks=true, linkcolor=emerald, urlcolor=emerald, bookmarks=true]{hyperref}
+
+\definecolor{emerald}{RGB}{0,102,51}
+\definecolor{darkred}{RGB}{139,0,0}
+\definecolor{lightgray}{RGB}{245,245,245}
+
+\usepackage[nil]{babel}
+\babelprovide[import, main]{bengali}
+\babelprovide[import]{arabic}
+\babelfont{rm}[Renderer=HarfBuzz,Scale=1.0]{Noto Serif Bengali}
+\babelfont{sf}[Renderer=HarfBuzz]{Noto Sans Bengali}
+\babelfont{tt}[Renderer=HarfBuzz]{Noto Sans Bengali}
+\babelfont[arabic]{rm}[Renderer=HarfBuzz,Scale=1.1]{Noto Naskh Arabic}
+
+% Section styling
+\titleformat{\section}{\Large\bfseries\color{emerald}}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\large\bfseries\color{emerald!85!black}}{\thesubsection.}{0.5em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{emerald!70!black}}{\thesubsubsection.}{0.5em}{}
+\titlespacing*{\section}{0pt}{18pt}{8pt}
+
+% Fancy Header/Footer setup
+\pagestyle{fancy}
+\fancyhf{} % clear all header and footer fields
+\fancyhead[L]{\color{emerald}\small\textbf{\nouppercase{\leftmark}}}
+\fancyfoot[L]{\scriptsize\color{black!50}{\lat{AI}}-সংকলিত, আলেম-যাচাইকৃত নয়}
+\fancyfoot[C]{\color{emerald!70!black}\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{emerald}\leaders\hrule height \headrulewidth\hfill}}
+\renewcommand{\footrulewidth}{0pt}
+
+% Custom boxes
+% 1. Ayat/Hadith Box
+\newtcolorbox{ayatbox}[1][]{
+    enhanced, breakable, 
+    colback=emerald!5, 
+    colframe=emerald, 
+    boxrule=0.5pt, 
+    arc=3pt, 
+    left=10pt, right=10pt, top=10pt, bottom=10pt,
+    #1
+}
+
+% 2. Quote/Translation Box
+\newtcolorbox{quotebox}[1][]{
+    enhanced, breakable,
+    frame hidden,
+    colback=lightgray,
+    borderline west={3pt}{0pt}{emerald},
+    left=15pt, right=10pt, top=10pt, bottom=10pt,
+    sharp corners,
+    #1
+}
+
+% 3. AI-generated notice box
+\newtcolorbox{warnbox}[1][]{
+    enhanced, breakable,
+    colback=red!4,
+    colframe=darkred,
+    boxrule=0.8pt,
+    arc=3pt,
+    left=10pt, right=10pt, top=10pt, bottom=10pt,
+    #1
+}
+
+% Commands
+\newcommand{\arab}[1]{\foreignlanguage{arabic}{#1}}
+\newcommand{\kib}[1]{\textcolor{emerald}{\textbf{#1}}}
+
+% Latin (English) fallback: Noto Serif Bengali has NO Latin glyphs
+\newfontfamily\latfont[Renderer=HarfBuzz]{Noto Serif}
+\newcommand{\lat}[1]{{\latfont #1}}
+
+\setlength{\parskip}{5pt}
+\setlength{\parindent}{0pt}
+
+% Fix for missing bullet in Noto Serif Bengali
+\renewcommand{\labelitemi}{$\bullet$}
+
+
