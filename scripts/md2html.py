@@ -2,23 +2,40 @@
 """Convert the Bengali markdown learning files to static HTML for GitHub Pages.
 
 Usage: python3 scripts/md2html.py
-Output: docs/index.html + one .html per .md file (mirroring the topic layout).
+Output:
+  docs/index.html                  — hub listing every topic
+  docs/<topic>/index.html          — per-topic index (card list of files)
+  docs/<topic>/<sub>/<file>.html   — one .html per .md file
 PDFs are linked to the raw GitHub URL so they download from the public repo.
 """
 import html
 import os
 import pathlib
 import re
+import shutil
 import urllib.parse
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-TOPIC = ROOT / '01-কিবর-ও-উজব'
 DOCS = ROOT / 'docs'
 REPO_RAW = 'https://raw.githubusercontent.com/ahsanjust/tazkiyah/main'
+ASSET_SRC = ROOT / 'assets' / 'style.css'
+ASSET_DST = DOCS / 'assets' / 'style.css'
 
 FONT = ('Noto Sans Bengali:400,600,700&display=swap')
 
 NOTICE_MARK = '**গুরুত্বপূর্ণ নোটিশ'
+
+# dir-name -> (brand short title, one-line tagline)
+TOPICS = {
+    '01-কিবর-ও-উজব': ('তাযকিয়াহ — অহংকার (কিবর) ও উজব',
+                       'কিবর ও উজব বোঝার ও তা থেকে বাঁচার পূর্ণাঙ্গ সংকলন — কুরআনের আয়াত, সহীহ হাদিস ও সাহাবিদের ঘটনা।'),
+    '02-সালাত': ('তাযকিয়াহ — সালাত (নামাজ)',
+                 'সালাতের মর্যাদা, শর্তাবলী, ফরজ-ওয়াজিব-সুন্নত, সঠিক পদ্ধতি, মাসআলা ও মাযহাব-তুলনা — দলিলসহ পূর্ণাঙ্গ সংকলন।'),
+}
+
+NOTICE_TEXT = ('**গুরুত্বপূর্ণ নোটিশ (Important Notice):** এই কন্টেন্টটি AI (কৃত্রিম বুদ্ধিমত্তা) দিয়ে প্রস্তুত ও সংকলিত। '
+               'AI কঠোর সূত্র-মান নীতি মেনে শুধু নির্ভরযোগ্য উৎস থেকে তথ্য সংগ্রহ করেছে — কেবল সহীহ/হাসান হাদিস ও সহীহ সনদের '
+               'আসার রাখা হয়েছে, দুর্বল সনদ বাদ দেওয়া হয়েছে। তবে এটি কোনো আলেম বা মুহাদ্দিস কর্তৃক যাচাইকৃত নয়।')
 
 
 def esc(s):
@@ -158,12 +175,28 @@ def convert(md_text):
 
 def raw_pdf_url(md_path):
     rel = md_path.relative_to(ROOT)
-    url = REPO_RAW + '/' + urllib.parse.quote(str(rel), safe='/.')
+    url = REPO_RAW + '/' + urllib.parse.quote(str(rel), safe='/.-')
     return url
 
 
-def page(title, body, back_href='index.html', pdf_url=None, css_href='assets/style.css'):
+def page(title, body, back_href='index.html', pdf_url=None, css_href='assets/style.css',
+         banner=False, tagline=''):
     pdf_link = f'<a class="btn" href="{pdf_url}">📥 PDF ডাউনলোড</a>' if pdf_url else ''
+    if banner:
+        head = f"""<section class="page-banner">
+  <a class="back" href="{back_href}">← সূচীপত্রে ফিরুন</a>
+  <h1>{esc(title)}</h1>
+  {pdf_link}
+</section>
+<main class="wrap">
+  <p class="intro-text">{esc(tagline)}</p>"""
+    else:
+        head = f"""<main class="wrap">
+  <div class="page-head">
+    <a class="back" href="{back_href}">← সূচীপত্রে ফিরুন</a>
+    <h1>{esc(title)}</h1>
+    {pdf_link}
+  </div>"""
     return f"""<!DOCTYPE html>
 <html lang="bn">
 <head>
@@ -177,14 +210,9 @@ def page(title, body, back_href='index.html', pdf_url=None, css_href='assets/sty
 </head>
 <body>
 <header class="site-head">
-  <a class="brand" href="{back_href}">তাযকিয়াহ — অহংকার (কিবর) ও উজব</a>
+  <a class="brand" href="{back_href}">তাযকিয়াহ</a>
 </header>
-<main class="wrap">
-  <div class="page-head">
-    <a class="back" href="{back_href}">← সূচীপত্রে ফিরুন</a>
-    <h1>{esc(title)}</h1>
-    {pdf_link}
-  </div>
+{head}
   <article class="content">
 {body}
   </article>
@@ -197,58 +225,111 @@ def page(title, body, back_href='index.html', pdf_url=None, css_href='assets/sty
 """
 
 
-def h1_of(md_text):
-    for line in md_text.split('\n'):
+def h1_of(text, fallback):
+    for line in text.split('\n'):
         if line.startswith('# '):
             return line[2:].strip()
-    return pathlib.Path(md_text).stem
+    return fallback
 
 
-def build():
-    DOCS.mkdir(exist_ok=True)
+def topic_md_files(topic_dir):
+    """All content .md files of a topic, in reading order."""
+    files = []
+    quran = topic_dir / 'কুরআন'
+    hadith = topic_dir / 'হাদিস'
+    stories = topic_dir / 'সাহাবিদের-ঘটনা'
+    if quran.is_dir():
+        files += sorted(quran.glob('*.md'))
+    if hadith.is_dir():
+        files += sorted(hadith.glob('*.md'))
+    files += sorted(p for p in topic_dir.glob('[0-9][0-9]-*.md')
+                    if not p.name.startswith('00-'))
+    if stories.is_dir():
+        files += sorted(stories.glob('*.md'))
+    return files
 
-    md_files = [
-        TOPIC / 'কুরআন/01-কুরআনের-আয়াত.md',
-        TOPIC / 'হাদিস/02-হাদিস-ও-আসার.md',
-        TOPIC / '03-ব্যবহারিক-গাইড.md',
-    ] + sorted((TOPIC / 'সাহাবিদের-ঘটনা').glob('*.md'))
 
+def card_list(items, css_prefix=''):
+    """items: list of (title, href)."""
+    icons = ['📖', '📜', '🕌', '🤲', '🧭', '⚠️', '📿', '📔', '⚖️', '🔁', '🌟', '❓']
+    out = ['<ul class="card-list">']
+    for idx, (title, href) in enumerate(items):
+        icon = icons[idx % len(icons)]
+        out.append(f'<li><a href="{href}"><span class="card-icon">{icon}</span>{esc(title)}</a></li>')
+    out.append('</ul>')
+    return '\n'.join(out)
+
+
+def build_topic(topic_dir, brand, tagline):
+    """Build per-topic pages + the topic index."""
+    md_files = topic_md_files(topic_dir)
     items = []
     for md in md_files:
         text = md.read_text(encoding='utf-8')
-        title = h1_of(text)
+        title = h1_of(text, md.stem)
         body = convert(text)
-        rel = md.relative_to(TOPIC)
-        html_name = rel.with_suffix('.html')
-        out_path = DOCS / html_name
+        rel = md.relative_to(topic_dir)
+        out_path = DOCS / topic_dir.name / rel.with_suffix('.html')
         out_path.parent.mkdir(parents=True, exist_ok=True)
         depth = len(rel.parts) - 1
         back = '../' * depth + 'index.html'
-        css_href = '../' * depth + 'assets/style.css'
-        href = urllib.parse.quote(str(html_name), safe='/.')
+        css_href = '../' * (depth + 1) + 'assets/style.css'
+        href = urllib.parse.quote(str(rel.with_suffix('.html')), safe='/.-')
         pdf_url = raw_pdf_url(md.with_suffix('.pdf'))
         out_path.write_text(page(title, body, back_href=back, pdf_url=pdf_url, css_href=css_href),
                             encoding='utf-8')
         items.append((title, href))
         print('wrote', out_path)
 
-    home_body = []
-    home_body.append('<blockquote class="notice">\n' +
-                     inline('**গুরুত্বপূর্ণ নোটিশ (Important Notice):** এই কন্টেন্টটি AI (কৃত্রিম বুদ্ধিমত্তা) দিয়ে প্রস্তুত ও সংকলিত। AI কঠোর সূত্র-মান নীতি মেনে শুধু নির্ভরযোগ্য উৎস থেকে তথ্য সংগ্রহ করেছে — কেবল সহীহ/হাসান হাদিস ও সহীহ সনদের আসার রাখা হয়েছে, দুর্বল সনদ বাদ দেওয়া হয়েছে। তবে এটি কোনো আলেম বা মুহাদ্দিস কর্তৃক যাচাইকৃত নয়।') +
-                     '\n</blockquote>')
-    home_body.append('<p>কিবর ও উজব বোঝার ও তা থেকে বাঁচার পূর্ণাঙ্গ সংকলন — কুরআনের আয়াত, সহীহ হাদিস ও সাহাবিদের ঘটনা।</p>')
-    home_body.append('<ul class="card-list">')
-    for title, href in items:
-        home_body.append(f'<li><a href="{href}">{esc(title)}</a></li>')
-    home_body.append('</ul>')
-    home_body.append('<p class="small">সবগুলো বিষয়ের PDF এই রিপোজিটরিতে আছে: '
-                     '<a href="https://github.com/ahsanjust/tazkiyah">github.com/ahsanjust/tazkiyah</a></p>')
+    # topic index
+    index_path = DOCS / topic_dir.name / 'index.html'
+    body = ['<blockquote class="notice">\n' + inline(NOTICE_TEXT) + '\n</blockquote>',
+            card_list(items)]
+    body.append('<p class="small">সবগুলো বিষয়ের PDF এই রিপোজিটরিতে আছে: '
+                f'<a href="https://github.com/ahsanjust/tazkiyah">github.com/ahsanjust/tazkiyah</a></p>')
+    index_path.write_text(page(brand, '\n'.join(body), back_href='../index.html',
+                               css_href='../assets/style.css', banner=True, tagline=tagline),
+                          encoding='utf-8')
+    print('wrote', index_path)
 
-    index = page('সূচীপত্র', '\n'.join(home_body), back_href='index.html')
-    (DOCS / 'index.html').write_text(index, encoding='utf-8')
+
+def build():
+    DOCS.mkdir(exist_ok=True)
     (DOCS / '.nojekyll').write_text('', encoding='utf-8')
+
+    # assets
+    if ASSET_SRC.exists():
+        ASSET_DST.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ASSET_SRC, ASSET_DST)
+        print('copied', ASSET_SRC, '->', ASSET_DST)
+
+    topic_dirs = sorted(
+        (p for p in ROOT.glob('[0-9][0-9]-*') if p.is_dir() and p.name in TOPICS),
+        key=lambda p: list(TOPICS).index(p.name))
+    for p in sorted(ROOT.glob('[0-9][0-9]-*')):
+        if p.is_dir() and p.name not in TOPICS:
+            print(f'warning: skipping topic dir not in TOPICS: {p.name}')
+
+    for topic_dir in topic_dirs:
+        brand, tagline = TOPICS[topic_dir.name]
+        build_topic(topic_dir, brand, tagline)
+
+    # hub index
+    hub_body = ['<blockquote class="notice">\n' + inline(NOTICE_TEXT) + '\n</blockquote>']
+    hub_items = []
+    for topic_dir in topic_dirs:
+        brand, _tagline = TOPICS[topic_dir.name]
+        href = urllib.parse.quote(topic_dir.name, safe='/-') + '/index.html'
+        hub_items.append((brand, href))
+    hub_body.append(card_list(hub_items))
+    hub_body.append('<p class="small">প্রতিটি বিষয়ে .md (সম্পাদনা), .tex ও .pdf (আরামে পড়া) দুটি ফরম্যাটেই আছে।</p>')
+    (DOCS / 'index.html').write_text(
+        page('তাযকিয়াহ — শেখা ও অনুশীলনের সংকলন',
+             '\n'.join(hub_body), back_href='index.html', css_href='assets/style.css',
+             banner=True,
+             tagline='কুরআন, সহীহ হাদিস ও সাহাবিদের জীবন্ত উদাহরণের আলোকে ধাপে ধাপে ইসলামি জ্ঞান ও চরিত্র গঠন।'),
+        encoding='utf-8')
     print('wrote', DOCS / 'index.html')
-    print('wrote', DOCS / '.nojekyll')
 
 
 if __name__ == '__main__':

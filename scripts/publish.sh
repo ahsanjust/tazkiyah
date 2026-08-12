@@ -27,7 +27,7 @@ PDFS=$(git -c core.quotepath=off ls-tree -r --name-only source | grep '\.pdf$')
 
 echo "==> Syncing PDFs + docs to main..."
 git checkout main
-git rm -r --quiet "01-কিবর-ও-উজব" docs assets 2>/dev/null || true
+git rm -r --quiet --ignore-unmatch '[0-9][0-9]-*' docs assets 2>/dev/null || true
 git checkout source -- $PDFS docs
 git add -A
 if git diff --cached --quiet; then
