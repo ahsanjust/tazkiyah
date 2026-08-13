@@ -31,6 +31,8 @@ TOPICS = {
                        'কিবর ও উজব বোঝার ও তা থেকে বাঁচার পূর্ণাঙ্গ সংকলন — কুরআনের আয়াত, সহীহ হাদিস ও সাহাবিদের ঘটনা।'),
     '02-সালাত': ('তাযকিয়াহ — সালাত (নামাজ)',
                  'সালাতের মর্যাদা, শর্তাবলী, ফরজ-ওয়াজিব-সুন্নত, সঠিক পদ্ধতি, মাসআলা ও মাযহাব-তুলনা — দলিলসহ পূর্ণাঙ্গ সংকলন।'),
+    '03-দ্বিধা-ও-সন্দেহ': ('তাযকিয়াহ — দ্বিধা ও সন্দেহ',
+                           'প্রচলিত দ্বিধাগুলোর দলিলভিত্তিক সমাধান — ছবি আঁকা, AI-ছবি ও অন্যান্য জিজ্ঞাসা, কুরআন, সহীহ হাদিস ও আলেমদের মতামতের আলোকে।'),
 }
 
 NOTICE_TEXT = ('**গুরুত্বপূর্ণ নোটিশ (Important Notice):** এই কন্টেন্টটি AI (কৃত্রিম বুদ্ধিমত্তা) দিয়ে প্রস্তুত ও সংকলিত। '
@@ -233,7 +235,7 @@ def h1_of(text, fallback):
 
 
 def topic_md_files(topic_dir):
-    """All content .md files of a topic, in reading order."""
+    """All content .md files of a topic, in reading order (flat topics)."""
     files = []
     quran = topic_dir / 'কুরআন'
     hadith = topic_dir / 'হাদিস'
@@ -244,6 +246,21 @@ def topic_md_files(topic_dir):
         files += sorted(hadith.glob('*.md'))
     files += sorted(p for p in topic_dir.glob('[0-9][0-9]-*.md')
                     if not p.name.startswith('00-'))
+    if stories.is_dir():
+        files += sorted(stories.glob('*.md'))
+    return files
+
+
+def unit_md_files(unit_dir):
+    """Content .md files inside a confusion unit (nested topic), in reading order."""
+    files = []
+    for sub in ('কুরআন', 'হাদিস'):
+        d = unit_dir / sub
+        if d.is_dir():
+            files += sorted(d.glob('*.md'))
+    files += sorted(p for p in unit_dir.glob('[0-9][0-9]-*.md')
+                    if not p.name.startswith('00-'))
+    stories = unit_dir / 'সাহাবিদের-ঘটনা'
     if stories.is_dir():
         files += sorted(stories.glob('*.md'))
     return files
@@ -260,9 +277,9 @@ def card_list(items, css_prefix=''):
     return '\n'.join(out)
 
 
-def build_topic(topic_dir, brand, tagline):
-    """Build per-topic pages + the topic index."""
-    md_files = topic_md_files(topic_dir)
+def build_pages(topic_dir, md_files, unit_dir=None):
+    """Build one HTML page per md file; return list of (title, href).
+    href is relative to the topic index (unit_dir=None) or the unit index."""
     items = []
     for md in md_files:
         text = md.read_text(encoding='utf-8')
@@ -272,16 +289,56 @@ def build_topic(topic_dir, brand, tagline):
         out_path = DOCS / topic_dir.name / rel.with_suffix('.html')
         out_path.parent.mkdir(parents=True, exist_ok=True)
         depth = len(rel.parts) - 1
-        back = '../' * depth + 'index.html'
+        if unit_dir:
+            back = '../' * (depth - 1) + 'index.html'
+            href = urllib.parse.quote(str(md.relative_to(unit_dir).with_suffix('.html')), safe='/.-')
+        else:
+            back = '../' * depth + 'index.html'
+            href = urllib.parse.quote(str(rel.with_suffix('.html')), safe='/.-')
         css_href = '../' * (depth + 1) + 'assets/style.css'
-        href = urllib.parse.quote(str(rel.with_suffix('.html')), safe='/.-')
         pdf_url = raw_pdf_url(md.with_suffix('.pdf'))
         out_path.write_text(page(title, body, back_href=back, pdf_url=pdf_url, css_href=css_href),
                             encoding='utf-8')
         items.append((title, href))
         print('wrote', out_path)
+    return items
 
-    # topic index
+
+def build_topic(topic_dir, brand, tagline):
+    """Build per-topic pages + the topic index (supports nested confusion units)."""
+    units = sorted((p for p in topic_dir.glob('[0-9][0-9]-*') if p.is_dir()))
+
+    if units:
+        # Nested structure: each unit (confusion) is an independent sub-collection.
+        unit_cards = []
+        for unit in units:
+            unit_rel = unit.name
+            md_files = unit_md_files(unit)
+            items = build_pages(topic_dir, md_files, unit_dir=unit)
+            index_path = DOCS / topic_dir.name / unit_rel / 'index.html'
+            body = ['<blockquote class="notice">\n' + inline(NOTICE_TEXT) + '\n</blockquote>',
+                    card_list(items)]
+            index_path.write_text(page(unit_rel, '\n'.join(body), back_href='../../index.html',
+                                       css_href='../../assets/style.css'),
+                                  encoding='utf-8')
+            print('wrote', index_path)
+            unit_cards.append((unit_rel, urllib.parse.quote(unit_rel, safe='/-') + '/index.html'))
+
+        index_path = DOCS / topic_dir.name / 'index.html'
+        body = ['<blockquote class="notice">\n' + inline(NOTICE_TEXT) + '\n</blockquote>',
+                card_list(unit_cards)]
+        body.append('<p class="small">প্রতিটি দ্বিধা একটি আলাদা সাবফোল্ডার — ভেতরে কুরআন, হাদিস, ব্যবহারিক গাইড ও সাহাবিদের ঘটনা। '
+                    'সবগুলো বিষয়ের PDF এই রিপোজিটরিতে আছে: '
+                    f'<a href="https://github.com/ahsanjust/tazkiyah">github.com/ahsanjust/tazkiyah</a></p>')
+        index_path.write_text(page(brand, '\n'.join(body), back_href='../index.html',
+                                   css_href='../assets/style.css', banner=True, tagline=tagline),
+                              encoding='utf-8')
+        print('wrote', index_path)
+        return
+
+    # Flat structure (original behaviour).
+    md_files = topic_md_files(topic_dir)
+    items = build_pages(topic_dir, md_files)
     index_path = DOCS / topic_dir.name / 'index.html'
     body = ['<blockquote class="notice">\n' + inline(NOTICE_TEXT) + '\n</blockquote>',
             card_list(items)]
