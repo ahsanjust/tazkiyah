@@ -52,6 +52,7 @@ def inline(text):
     text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'\\textit{\1}', text)
     # arrows and quotes that the Bengali font lacks
     text = text.replace('→', r'$\rightarrow$')
+    text = text.replace('←', r'$\leftarrow$')
     text = text.replace('«', r'\lat{“}')
     text = text.replace('»', r'\lat{”}')
     return wrap_arabic(text)
