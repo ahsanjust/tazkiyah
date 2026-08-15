@@ -16,7 +16,10 @@ PREAMBLE_PATH = os.path.join(HERE, '..', 'shared', 'preamble.tex')
 
 ARABIC_RE = re.compile(r'[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]+')
 ARABIC_PUNCT = 'ۖۗۘۙۚۛۜ'
-LATIN_RE = re.compile(r"(?<!\\)[A-Za-z0-9]+(?:['\u2019-][A-Za-z0-9]+)*")
+# Match Latin/digit runs, but never inside an existing \command name
+# (e.g. \lat, \textbackslash) — a run preceded by a backslash or another
+# letter/digit is part of a command and must stay untouched.
+LATIN_RE = re.compile(r"(?<![\\A-Za-z0-9])[A-Za-z0-9]+(?:['\u2019-][A-Za-z0-9]+)*")
 
 
 def has_arabic(s):
@@ -39,7 +42,7 @@ def inline(text):
     """Convert inline markdown (**bold**, *italic*) to LaTeX, wrapping Latin/Arabic."""
     text = text.replace('\\', r'\textbackslash{}')
     text = text.replace('⚠️', '').replace('⚠', '')
-    text = text.replace('#', r'\#').replace('%', r'\%').replace('&', r'\&')
+    text = text.replace('#', r'\#').replace('%', r'\%').replace('&', r'\lat{\&}')
     text = text.replace('_', r'\_').replace('$', r'\$')
     # Latin runs -> \lat{...} (before bold so command names stay untouched)
     text = wrap_latin(text)
@@ -76,6 +79,8 @@ def convert_line(line):
         return '\\subsection*{' + inline(stripped[3:]) + '}'
     if stripped.startswith('### '):
         return '\\subsubsection*{' + inline(stripped[4:]) + '}'
+    if stripped.startswith('#### '):
+        return '\\subsubsection*{' + inline(stripped[5:]) + '}'
 
     if re.match(r'^---+$', stripped):
         return '\\medskip\\hrule\\medskip'
@@ -209,7 +214,7 @@ def main():
     body = convert(content)
     full = '\\input{' + pre_path + '}\n'
     full += '\\begin{document}\n'
-    full += '\\begin{center}{\\Large\\bfseries\\color{emerald} ' + title.replace('_', ' ') + '}\\end{center}\n\\vspace{1em}\n'
+    full += '\\begin{center}{\\Large\\bfseries\\color{emerald} ' + inline(title.replace('_', ' ')) + '}\\end{center}\n\\vspace{1em}\n'
     full += body + '\n\n\\end{document}\n'
 
     with open(dst, 'w', encoding='utf-8') as f:
